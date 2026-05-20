@@ -4,6 +4,7 @@ import LoadingScreen from "@/components/LoadingScreen";
 import SearchPanel from "@/components/SearchPanel";
 import InfoPanel from "@/components/InfoPanel";
 import LayerControlPanel, { LayerState } from "@/components/LayerControlPanel";
+import SchoolListPanel, { getSchoolLevel, SCHOOL_LEVEL_CONFIG, SchoolLevel } from "@/components/SchoolListPanel";
 import {
   Search,
   Locate,
@@ -11,6 +12,7 @@ import {
   Map as MapIcon,
   Info,
   X,
+  GraduationCap,
 } from "lucide-react";
 
 export interface GeoFeature {
@@ -59,24 +61,49 @@ function getFeatureCenter(geometry: GeoFeature["geometry"]): [number, number] | 
   return null;
 }
 
+function makeSchoolMarkerHtml(level: SchoolLevel): string {
+  const cfg = SCHOOL_LEVEL_CONFIG[level];
+  return `
+    <div style="
+      width:32px;height:32px;
+      background:${cfg.markerColor};
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:3px solid white;
+      box-shadow:0 3px 10px rgba(0,0,0,0.25);
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <div style="transform:rotate(45deg);font-size:14px;line-height:26px;text-align:center;user-select:none;">${cfg.emoji}</div>
+    </div>
+  `;
+}
+
 function makePopupContent(props: GeoFeature["properties"]): string {
-  const amenityMap: Record<string, string> = {
-    school: "🏫 Sekolah",
-    university: "🏛️ Universitas",
-  };
+  const level = getSchoolLevel(props.name, props.amenity);
+  const cfg = SCHOOL_LEVEL_CONFIG[level];
+  const isSchool = props.amenity === "school" || props.amenity === "university";
+
   const name = props.name || "Fitur Tanpa Nama";
-  const amenity = props.amenity ? amenityMap[props.amenity] || props.amenity : null;
   const operatorRow = props.operator
-    ? `<div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:#999;">Pengelola</span><span style="text-align:right;font-weight:500;">${props.operator}</span></div>`
+    ? `<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;"><span style="color:#999;">Pengelola</span><span style="text-align:right;font-weight:500;font-size:11px;">${props.operator}</span></div>`
     : "";
   const idRow = props.osm_id
-    ? `<div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:#999;">OSM ID</span><span style="font-family:monospace;font-size:11px;">${props.osm_id}</span></div>`
+    ? `<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;"><span style="color:#999;">OSM ID</span><span style="font-family:monospace;font-size:11px;">${props.osm_id}</span></div>`
     : "";
+
+  const badgeStyle = isSchool
+    ? `background:${cfg.markerColor}18;color:${cfg.markerColor};border:1px solid ${cfg.markerColor}40;`
+    : "background:#e8f5e9;color:#2e7d32;";
+
+  const badgeText = isSchool ? `${cfg.emoji} ${cfg.label}` : (
+    props.amenity === "university" ? "🏛️ Universitas" : ""
+  );
+
   return `
-    <div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:200px;max-width:260px;">
+    <div style="font-family:'Inter',system-ui,sans-serif;min-width:200px;max-width:260px;">
       <div style="padding:12px 14px 10px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:14px;font-weight:600;color:#1a2e1a;line-height:1.3;margin-bottom:4px;">${name}</div>
-        ${amenity ? `<span style="display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:#e8f5e9;color:#2e7d32;">${amenity}</span>` : ""}
+        <div style="font-size:14px;font-weight:600;color:#1a2e1a;line-height:1.3;margin-bottom:6px;">${name}</div>
+        ${badgeText ? `<span style="display:inline-block;font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;${badgeStyle}">${badgeText}</span>` : ""}
       </div>
       <div style="padding:8px 14px 12px;font-size:12px;color:#555;line-height:1.9;">
         ${operatorRow}${idRow}
@@ -112,6 +139,7 @@ export default function MapPage() {
   const [showSearch, setShowSearch] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showBasemap, setShowBasemap] = useState(false);
+  const [showSchoolList, setShowSchoolList] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<GeoFeature | null>(null);
   const [selectedLatlng, setSelectedLatlng] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsActive, setGpsActive] = useState(false);
@@ -142,11 +170,9 @@ export default function MapPage() {
   const dataLoadedRef = useRef(false);
 
   const handleLoadingDone = useCallback(async () => {
-    const dataUrl = BASE_URL.endsWith("/")
-      ? `${BASE_URL}data/ngawi.geojson`
-      : `${BASE_URL}/data/ngawi.geojson`;
+    const base = BASE_URL.endsWith("/") ? BASE_URL : BASE_URL + "/";
     try {
-      const res = await fetch(dataUrl);
+      const res = await fetch(`${base}data/ngawi.geojson`);
       const json = await res.json();
       setGeoData(json.features as GeoFeature[]);
     } catch (e) {
@@ -190,25 +216,16 @@ export default function MapPage() {
     if (!groups || dataLoadedRef.current) return;
     dataLoadedRef.current = true;
 
-    const schoolIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:30px;height:30px;background:#3b82f6;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(59,130,246,0.5);display:flex;align-items:center;justify-content:center;">
-        <div style="transform:rotate(45deg);font-size:13px;line-height:24px;text-align:center;">🏫</div>
-      </div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 30],
-      popupAnchor: [0, -34],
-    });
-
-    const uniIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:34px;height:34px;background:#8b5cf6;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(139,92,246,0.5);display:flex;align-items:center;justify-content:center;">
-        <div style="transform:rotate(45deg);font-size:15px;line-height:28px;text-align:center;">🏛️</div>
-      </div>`,
-      iconSize: [34, 34],
-      iconAnchor: [17, 34],
-      popupAnchor: [0, -38],
-    });
+    // School icons by level
+    function makeSchoolIcon(level: SchoolLevel, size: number = 32): L.DivIcon {
+      return L.divIcon({
+        className: "",
+        html: makeSchoolMarkerHtml(level),
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size],
+        popupAnchor: [0, -(size + 4)],
+      });
+    }
 
     const pointIcon = L.divIcon({
       className: "",
@@ -231,24 +248,32 @@ export default function MapPage() {
         setSelectedFeature(feature);
         setSelectedLatlng({ lat: latlng.lat, lng: latlng.lng });
         setShowInfo(true);
+        setShowSchoolList(false);
       };
 
       if (geom.type === "Point") {
         const coords = geom.coordinates as number[];
         const latlng: [number, number] = [coords[1], coords[0]];
-        let group = groups.points;
-        let icon = pointIcon;
+
         if (props.amenity === "school") {
-          group = groups.schools;
-          icon = schoolIcon;
+          const level = getSchoolLevel(props.name, props.amenity);
+          const icon = makeSchoolIcon(level, 32);
+          const marker = L.marker(latlng, { icon });
+          marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
+          marker.on("click", (e) => handleClick(e.latlng));
+          marker.addTo(groups.schools);
         } else if (props.amenity === "university") {
-          group = groups.universities;
-          icon = uniIcon;
+          const icon = makeSchoolIcon("UNIVERSITAS", 36);
+          const marker = L.marker(latlng, { icon });
+          marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
+          marker.on("click", (e) => handleClick(e.latlng));
+          marker.addTo(groups.universities);
+        } else {
+          const marker = L.marker(latlng, { icon: pointIcon });
+          marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
+          marker.on("click", (e) => handleClick(e.latlng));
+          marker.addTo(groups.points);
         }
-        const marker = L.marker(latlng, { icon });
-        marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
-        marker.on("click", (e) => handleClick(e.latlng));
-        marker.addTo(group);
         visible++;
       } else if (geom.type === "LineString") {
         const coords = geom.coordinates as number[][];
@@ -309,15 +334,10 @@ export default function MapPage() {
     const groups = layerGroupsRef.current;
     const map = mapRef.current;
     if (!groups || !map) return;
-
     const toggle = (group: L.LayerGroup, active: boolean) => {
-      if (active) {
-        if (!map.hasLayer(group)) map.addLayer(group);
-      } else {
-        if (map.hasLayer(group)) map.removeLayer(group);
-      }
+      if (active) { if (!map.hasLayer(group)) map.addLayer(group); }
+      else { if (map.hasLayer(group)) map.removeLayer(group); }
     };
-
     toggle(groups.schools, layers.schools);
     toggle(groups.universities, layers.universities);
     toggle(groups.lines, layers.lines);
@@ -330,13 +350,8 @@ export default function MapPage() {
     if (!map) return;
     const layer = TILE_LAYERS.find((l) => l.id === currentBasemap);
     if (!layer) return;
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-    }
-    const tile = L.tileLayer(layer.url, {
-      attribution: layer.attribution,
-      maxZoom: 19,
-    });
+    if (tileLayerRef.current) map.removeLayer(tileLayerRef.current);
+    const tile = L.tileLayer(layer.url, { attribution: layer.attribution, maxZoom: 19 });
     tile.addTo(map);
     tile.bringToBack();
     tileLayerRef.current = tile;
@@ -346,51 +361,31 @@ export default function MapPage() {
   const handleGPS = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-
     if (gpsActive) {
       if (gpsMarkerRef.current) { map.removeLayer(gpsMarkerRef.current); gpsMarkerRef.current = null; }
       if (gpsCircleRef.current) { map.removeLayer(gpsCircleRef.current); gpsCircleRef.current = null; }
       setGpsActive(false);
       return;
     }
-
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng, accuracy } = pos.coords;
         if (gpsMarkerRef.current) map.removeLayer(gpsMarkerRef.current);
         if (gpsCircleRef.current) map.removeLayer(gpsCircleRef.current);
-
-        const circle = L.circle([lat, lng], {
-          radius: accuracy,
-          color: "#3b82f6",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.08,
-          weight: 1,
-        });
+        const circle = L.circle([lat, lng], { radius: accuracy, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.08, weight: 1 });
         circle.addTo(map);
         gpsCircleRef.current = circle;
-
         const gpsIcon = L.divIcon({
           className: "",
-          html: `<div style="position:relative;width:18px;height:18px;">
-            <div style="width:18px;height:18px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(59,130,246,0.6);"></div>
-          </div>`,
+          html: `<div style="position:relative;width:18px;height:18px;"><div style="width:18px;height:18px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(59,130,246,0.6);"></div></div>`,
           iconSize: [18, 18],
           iconAnchor: [9, 9],
         });
-
         const marker = L.marker([lat, lng], { icon: gpsIcon });
-        marker.bindPopup(
-          `<div style="font-family:'Plus Jakarta Sans',sans-serif;padding:12px;text-align:center;">
-            <div style="font-size:13px;font-weight:600;color:#1a2e1a;margin-bottom:6px;">Lokasi Anda</div>
-            <div style="font-size:11px;color:#666;">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
-            <div style="font-size:11px;color:#999;margin-top:2px;">Akurasi: ±${Math.round(accuracy)}m</div>
-          </div>`
-        );
+        marker.bindPopup(`<div style="font-family:'Inter',system-ui,sans-serif;padding:12px;text-align:center;"><div style="font-size:13px;font-weight:600;color:#1a2e1a;margin-bottom:6px;">Lokasi Anda</div><div style="font-size:11px;color:#666;">${lat.toFixed(6)}, ${lng.toFixed(6)}</div><div style="font-size:11px;color:#999;margin-top:2px;">Akurasi: ±${Math.round(accuracy)}m</div></div>`);
         marker.addTo(map);
         gpsMarkerRef.current = marker;
-
         map.flyTo([lat, lng], 16, { duration: 1.5 });
         setGpsActive(true);
         setGpsLoading(false);
@@ -413,6 +408,22 @@ export default function MapPage() {
     setSelectedLatlng({ lat: center[0], lng: center[1] });
     setShowInfo(true);
   }, []);
+
+  const handleSchoolSelect = useCallback((feature: GeoFeature) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const center = getFeatureCenter(feature.geometry);
+    if (!center) return;
+    map.flyTo(center, 17, { duration: 1.2 });
+    setSelectedFeature(feature);
+    setSelectedLatlng({ lat: center[0], lng: center[1] });
+    setShowInfo(true);
+    setShowSchoolList(false);
+  }, []);
+
+  const schoolCount = geoData.filter(
+    (f) => f.properties.amenity === "school" || f.properties.amenity === "university"
+  ).length;
 
   if (loading) {
     return <LoadingScreen onDone={handleLoadingDone} />;
@@ -460,10 +471,21 @@ export default function MapPage() {
         />
       )}
 
-      {/* Layer control */}
-      <LayerControlPanel layers={layers} onChange={setLayers} />
+      {/* Layer control — only show when school list is hidden */}
+      {!showSchoolList && (
+        <LayerControlPanel layers={layers} onChange={setLayers} />
+      )}
 
-      {/* GPS + Basemap controls */}
+      {/* School list panel */}
+      {showSchoolList && (
+        <SchoolListPanel
+          features={geoData}
+          onSelect={handleSchoolSelect}
+          onClose={() => setShowSchoolList(false)}
+        />
+      )}
+
+      {/* Left controls: GPS + Basemap + Schools */}
       <div className="absolute left-4 bottom-6 z-[1000] flex flex-col gap-2">
         <button
           onClick={handleGPS}
@@ -476,11 +498,7 @@ export default function MapPage() {
           title={gpsActive ? "Nonaktifkan GPS" : "Aktifkan GPS"}
           data-testid="button-gps"
         >
-          {gpsActive ? (
-            <LocateFixed className="w-5 h-5" />
-          ) : (
-            <Locate className="w-5 h-5" />
-          )}
+          {gpsActive ? <LocateFixed className="w-5 h-5" /> : <Locate className="w-5 h-5" />}
         </button>
 
         <button
@@ -494,6 +512,28 @@ export default function MapPage() {
           data-testid="button-basemap"
         >
           <MapIcon className="w-4 h-4" />
+        </button>
+
+        {/* School list toggle */}
+        <button
+          onClick={() => {
+            setShowSchoolList((v) => !v);
+            setShowBasemap(false);
+          }}
+          className={`w-11 h-11 rounded-2xl shadow-xl border flex items-center justify-center transition-all relative ${
+            showSchoolList
+              ? "bg-emerald-600 border-emerald-500 text-white"
+              : "bg-white/95 backdrop-blur-sm border-white/60 text-gray-600 hover:text-emerald-600 hover:border-emerald-200"
+          }`}
+          title="Daftar Sekolah"
+          data-testid="button-school-list"
+        >
+          <GraduationCap className="w-5 h-5" />
+          {schoolCount > 0 && !showSchoolList && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+              {schoolCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -518,11 +558,7 @@ export default function MapPage() {
               }`}
               data-testid={`button-basemap-${t.id}`}
             >
-              <div
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  currentBasemap === t.id ? "bg-emerald-600" : "bg-gray-200"
-                }`}
-              />
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentBasemap === t.id ? "bg-emerald-600" : "bg-gray-200"}`} />
               {t.label}
             </button>
           ))}
@@ -545,6 +581,31 @@ export default function MapPage() {
           <span className="text-xs text-gray-500">Klik fitur untuk info</span>
         </div>
       </div>
+
+      {/* School type legend — shown when school list is open */}
+      {showSchoolList && (
+        <div className="absolute bottom-6 left-20 z-[999]">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-white/60 px-3 py-2">
+            <div className="text-xs font-semibold text-gray-500 mb-1.5">Legenda Sekolah</div>
+            <div className="flex flex-col gap-1">
+              {(["SD","SMP","SMA","SMK","AKPER","UNIVERSITAS"] as const).map((level) => {
+                const cfg = SCHOOL_LEVEL_CONFIG[level];
+                return (
+                  <div key={level} className="flex items-center gap-2">
+                    <div
+                      className="w-3.5 h-3.5 rounded-full flex-shrink-0 border-2 border-white shadow-sm"
+                      style={{ background: cfg.markerColor }}
+                    />
+                    <span className="text-xs text-gray-700">
+                      {cfg.emoji} {cfg.shortLabel} — {cfg.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
