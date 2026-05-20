@@ -5,6 +5,7 @@ import SearchPanel from "@/components/SearchPanel";
 import InfoPanel from "@/components/InfoPanel";
 import LayerControlPanel, { LayerState } from "@/components/LayerControlPanel";
 import SchoolListPanel, { getSchoolLevel, SCHOOL_LEVEL_CONFIG, SchoolLevel } from "@/components/SchoolListPanel";
+import StatsPanel from "@/components/StatsPanel";
 import {
   Search,
   Locate,
@@ -13,6 +14,7 @@ import {
   Info,
   X,
   GraduationCap,
+  BarChart3,
 } from "lucide-react";
 
 export interface GeoFeature {
@@ -140,6 +142,7 @@ export default function MapPage() {
   const [showInfo, setShowInfo] = useState(false);
   const [showBasemap, setShowBasemap] = useState(false);
   const [showSchoolList, setShowSchoolList] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<GeoFeature | null>(null);
   const [selectedLatlng, setSelectedLatlng] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsActive, setGpsActive] = useState(false);
@@ -510,17 +513,34 @@ export default function MapPage() {
         />
       )}
 
-      {/* Layer control — only show when school list is hidden */}
-      {!showSchoolList && (
+      {/* Layer control — only show when no right panel is open */}
+      {!showSchoolList && !showStats && (
         <LayerControlPanel layers={layers} onChange={setLayers} />
       )}
 
       {/* School list panel */}
-      {showSchoolList && (
+      {showSchoolList && !showStats && (
         <SchoolListPanel
           features={geoData}
           onSelect={handleSchoolSelect}
           onClose={() => setShowSchoolList(false)}
+        />
+      )}
+
+      {/* Stats panel */}
+      {showStats && (
+        <StatsPanel
+          features={geoData}
+          onSelectSchool={(f) => {
+            const feature = f as GeoFeature;
+            const center = getFeatureCenter(feature.geometry);
+            if (center && mapRef.current) mapRef.current.flyTo(center, 17, { duration: 1.2 });
+            setSelectedFeature(feature);
+            setSelectedLatlng(center ? { lat: center[0], lng: center[1] } : null);
+            setShowInfo(true);
+            setShowStats(false);
+          }}
+          onClose={() => setShowStats(false)}
         />
       )}
 
@@ -557,6 +577,7 @@ export default function MapPage() {
         <button
           onClick={() => {
             setShowSchoolList((v) => !v);
+            setShowStats(false);
             setShowBasemap(false);
           }}
           className={`w-11 h-11 rounded-2xl shadow-xl border flex items-center justify-center transition-all relative ${
@@ -568,11 +589,29 @@ export default function MapPage() {
           data-testid="button-school-list"
         >
           <GraduationCap className="w-5 h-5" />
-          {schoolCount > 0 && !showSchoolList && (
+          {schoolCount > 0 && !showSchoolList && !showStats && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
               {schoolCount}
             </span>
           )}
+        </button>
+
+        {/* Statistics toggle */}
+        <button
+          onClick={() => {
+            setShowStats((v) => !v);
+            setShowSchoolList(false);
+            setShowBasemap(false);
+          }}
+          className={`w-11 h-11 rounded-2xl shadow-xl border flex items-center justify-center transition-all ${
+            showStats
+              ? "bg-slate-700 border-slate-600 text-white"
+              : "bg-white/95 backdrop-blur-sm border-white/60 text-gray-600 hover:text-slate-700 hover:border-slate-300"
+          }`}
+          title="Statistik Kebutuhan Sekolah"
+          data-testid="button-stats"
+        >
+          <BarChart3 className="w-5 h-5" />
         </button>
       </div>
 
