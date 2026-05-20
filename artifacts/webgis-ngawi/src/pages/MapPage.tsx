@@ -251,23 +251,26 @@ export default function MapPage() {
         setShowSchoolList(false);
       };
 
+      const isSchoolFeature =
+        props.amenity === "school" || props.amenity === "university";
+
       if (geom.type === "Point") {
         const coords = geom.coordinates as number[];
         const latlng: [number, number] = [coords[1], coords[0]];
 
-        if (props.amenity === "school") {
-          const level = getSchoolLevel(props.name, props.amenity);
-          const icon = makeSchoolIcon(level, 32);
+        if (isSchoolFeature) {
+          const level =
+            props.amenity === "university"
+              ? "UNIVERSITAS"
+              : getSchoolLevel(props.name, props.amenity);
+          const size = props.amenity === "university" ? 36 : 32;
+          const icon = makeSchoolIcon(level, size);
           const marker = L.marker(latlng, { icon });
           marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
           marker.on("click", (e) => handleClick(e.latlng));
-          marker.addTo(groups.schools);
-        } else if (props.amenity === "university") {
-          const icon = makeSchoolIcon("UNIVERSITAS", 36);
-          const marker = L.marker(latlng, { icon });
-          marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
-          marker.on("click", (e) => handleClick(e.latlng));
-          marker.addTo(groups.universities);
+          const group =
+            props.amenity === "university" ? groups.universities : groups.schools;
+          marker.addTo(group);
         } else {
           const marker = L.marker(latlng, { icon: pointIcon });
           marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
@@ -294,16 +297,52 @@ export default function MapPage() {
         const latlngs = rings.map((ring) =>
           ring.map((c) => [c[1], c[0]] as [number, number])
         );
-        const poly = L.polygon(latlngs, {
-          color: "#0d9488",
-          weight: 2,
-          fillColor: "#0d9488",
-          fillOpacity: 0.18,
-          opacity: 0.7,
-        });
-        poly.bindPopup(popupContent);
-        poly.on("click", (e) => handleClick(e.latlng));
-        poly.addTo(groups.polygons);
+
+        if (isSchoolFeature) {
+          // School polygons: colored outline + center marker
+          const level =
+            props.amenity === "university"
+              ? "UNIVERSITAS"
+              : getSchoolLevel(props.name, props.amenity);
+          const cfg = SCHOOL_LEVEL_CONFIG[level];
+          const group =
+            props.amenity === "university" ? groups.universities : groups.schools;
+
+          const poly = L.polygon(latlngs, {
+            color: cfg.markerColor,
+            weight: 2,
+            fillColor: cfg.markerColor,
+            fillOpacity: 0.15,
+            opacity: 0.8,
+          });
+          poly.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
+          poly.on("click", (e) => handleClick(e.latlng));
+          poly.addTo(group);
+
+          // Center marker for the polygon
+          const ring = rings[0];
+          const lats = ring.map((c) => c[1]);
+          const lngs2 = ring.map((c) => c[0]);
+          const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+          const centerLng = (Math.min(...lngs2) + Math.max(...lngs2)) / 2;
+          const size = props.amenity === "university" ? 36 : 32;
+          const icon = makeSchoolIcon(level, size);
+          const marker = L.marker([centerLat, centerLng], { icon });
+          marker.bindPopup(popupContent, { maxWidth: 280, minWidth: 220 });
+          marker.on("click", (e) => handleClick(e.latlng));
+          marker.addTo(group);
+        } else {
+          const poly = L.polygon(latlngs, {
+            color: "#0d9488",
+            weight: 2,
+            fillColor: "#0d9488",
+            fillOpacity: 0.18,
+            opacity: 0.7,
+          });
+          poly.bindPopup(popupContent);
+          poly.on("click", (e) => handleClick(e.latlng));
+          poly.addTo(groups.polygons);
+        }
         visible++;
       }
     });
