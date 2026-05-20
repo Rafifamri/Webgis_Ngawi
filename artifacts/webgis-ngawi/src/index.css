@@ -175,3 +175,52 @@
 }
 
 input[type="search"]::-webkit-search-cancel-button { display: none; }
+
+/* ============================================================
+   PRINT STYLES — hide UI controls, show only the map
+   ============================================================ */
+@media print {
+  body { margin: 0; padding: 0; }
+  /* Hide all UI controls */
+  [data-testid="button-gps"],
+  [data-testid="button-home"],
+  [data-testid="button-fullscreen"],
+  [data-testid="button-measure"],
+  [data-testid="button-layer-control"],
+  [data-testid="button-legend"],
+  [data-testid="button-school-list"],
+  [data-testid="button-stats"],
+  [data-testid="button-share"],
+  [data-testid="button-print"],
+  [data-testid="button-about"],
+  [data-testid="button-basemap"],
+  [data-testid="button-search-open"],
+  [data-testid="search-panel"],
+  [data-testid="about-modal"],
+  [data-testid="map-legend"],
+  [data-testid="basemap-panel"] { display: none !important; }
+  /* Expand map to fill page */
+  [data-testid="map-page"],
+  [data-testid="map-container"] {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+  /* Keep info panel and bottom bar */
+  .leaflet-control-zoom,
+  .leaflet-control-scale { display: block !important; }
+}
+
+/* Leaflet scale control custom style */
+.leaflet-control-scale-line {
+  border-color: #059669 !important;
+  border-top: none !important;
+  font-size: 11px !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+  color: #374151 !important;
+  background: rgba(255,255,255,0.9) !important;
+  padding: 2px 6px !important;
+  border-radius: 0 0 6px 6px !important;
+}
+
