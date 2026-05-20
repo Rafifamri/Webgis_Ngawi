@@ -8,10 +8,11 @@ import SchoolListPanel, { getSchoolLevel, SCHOOL_LEVEL_CONFIG, SchoolLevel } fro
 import StatsPanel from "@/components/StatsPanel";
 import MapLegend from "@/components/MapLegend";
 import AboutModal from "@/components/AboutModal";
+import RoutingPanel, { RoutingLocation } from "@/components/RoutingPanel";
 import {
   Search, Locate, LocateFixed, Map as MapIcon, Info, X,
   GraduationCap, BarChart3, Home, Maximize, Minimize,
-  Ruler, BookOpen, Share2, Printer, HelpCircle, Layers,
+  Ruler, BookOpen, Share2, Printer, HelpCircle, Layers, Navigation,
 } from "lucide-react";
 
 export interface GeoFeature {
@@ -115,6 +116,14 @@ export default function MapPage() {
   const [featureCount, setFeatureCount] = useState({ total: 0, visible: 0 });
   const [layers, setLayers] = useState<LayerState>({ points: true, lines: true, polygons: true, schools: true, universities: true });
 
+  // Routing state
+  const [showRouting, setShowRouting] = useState(false);
+  const [routingFrom, setRoutingFrom] = useState<RoutingLocation | null>(null);
+  const [routingTo, setRoutingTo] = useState<RoutingLocation | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
+  const [routingLoading, setRoutingLoading] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
+
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -122,6 +131,7 @@ export default function MapPage() {
   const gpsCircleRef = useRef<L.Circle | null>(null);
   const layerGroupsRef = useRef<{ points: L.LayerGroup; lines: L.LayerGroup; polygons: L.LayerGroup; schools: L.LayerGroup; universities: L.LayerGroup } | null>(null);
   const measureLayerRef = useRef<L.LayerGroup | null>(null);
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);
   const measurePointsRef = useRef<L.LatLng[]>([]);
   const measureDistanceRef = useRef(0);
   const dataLoadedRef = useRef(false);
@@ -162,6 +172,9 @@ export default function MapPage() {
 
     const measureLayer = L.layerGroup().addTo(map);
     measureLayerRef.current = measureLayer;
+
+    const routeLayer = L.layerGroup().addTo(map);
+    routeLayerRef.current = routeLayer;
 
     // Cursor coordinate tracking
     map.on("mousemove", (e) => setCursorCoords({ lat: e.latlng.lat, lng: e.latlng.lng }));
@@ -383,7 +396,88 @@ export default function MapPage() {
     setSelectedFeature(feature); setSelectedLatlng({ lat: center[0], lng: center[1] }); setShowInfo(true); setShowSchoolList(false);
   }, []);
 
-  const closeRightPanels = () => { setShowSchoolList(false); setShowStats(false); setShowLayerControl(false); };
+  const handleCalculateRoute = useCallback(async () => {
+    const from = routingFrom, to = routingTo;
+    if (!from || !to || !mapRef.current) return;
+    setRoutingLoading(true);
+    setRoutingError(null);
+    setRouteInfo(null);
+
+    // Clear previous route
+    routeLayerRef.current?.clearLayers();
+
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.code !== "Ok" || !data.routes?.length) {
+        setRoutingError("Rute tidak ditemukan. Coba lokasi lain yang dapat dijangkau lewat jalan.");
+        setRoutingLoading(false);
+        return;
+      }
+
+      const route = data.routes[0];
+      const coords: [number, number][] = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]]);
+
+      const layer = routeLayerRef.current!;
+
+      // Route polyline (shadow)
+      L.polyline(coords, { color: "#1d4ed8", weight: 8, opacity: 0.15 }).addTo(layer);
+      // Route polyline (main)
+      L.polyline(coords, { color: "#2563eb", weight: 4, opacity: 0.9, lineCap: "round", lineJoin: "round" }).addTo(layer);
+      // Route polyline (dash overlay)
+      L.polyline(coords, { color: "#93c5fd", weight: 2, opacity: 0.8, dashArray: "8,8" }).addTo(layer);
+
+      // Origin marker (green)
+      const fromIcon = L.divIcon({
+        className: "",
+        html: `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
+          <div style="width:28px;height:28px;background:#16a34a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 12px rgba(22,163,74,0.5);">
+            <div style="transform:rotate(45deg);font-size:13px;line-height:22px;text-align:center;">🟢</div>
+          </div>
+        </div>`,
+        iconSize: [36, 36], iconAnchor: [14, 36], popupAnchor: [0, -38],
+      });
+      L.marker([from.lat, from.lng], { icon: fromIcon })
+        .bindPopup(`<div style="font-family:'Inter',system-ui,sans-serif;padding:10px 12px;"><div style="font-size:11px;color:#16a34a;font-weight:700;margin-bottom:4px;">TITIK ASAL</div><div style="font-size:13px;font-weight:600;color:#1a2e1a;">${from.name}</div><div style="font-size:11px;color:#888;margin-top:2px;">${from.lat.toFixed(5)}, ${from.lng.toFixed(5)}</div></div>`)
+        .addTo(layer);
+
+      // Destination marker (blue)
+      const toIcon = L.divIcon({
+        className: "",
+        html: `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
+          <div style="width:28px;height:28px;background:#2563eb;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 12px rgba(37,99,235,0.5);">
+            <div style="transform:rotate(45deg);font-size:13px;line-height:22px;text-align:center;">📍</div>
+          </div>
+        </div>`,
+        iconSize: [36, 36], iconAnchor: [14, 36], popupAnchor: [0, -38],
+      });
+      L.marker([to.lat, to.lng], { icon: toIcon })
+        .bindPopup(`<div style="font-family:'Inter',system-ui,sans-serif;padding:10px 12px;"><div style="font-size:11px;color:#2563eb;font-weight:700;margin-bottom:4px;">TUJUAN</div><div style="font-size:13px;font-weight:600;color:#1a2e1a;">${to.name}</div><div style="font-size:11px;color:#888;margin-top:2px;">${to.lat.toFixed(5)}, ${to.lng.toFixed(5)}</div></div>`)
+        .addTo(layer);
+
+      // Fit map to route
+      const bounds = L.latLngBounds(coords);
+      mapRef.current.fitBounds(bounds, { padding: [60, 80], maxZoom: 17, animate: true, duration: 1.5 });
+
+      setRouteInfo({ distance: route.distance, duration: route.duration });
+    } catch {
+      setRoutingError("Gagal menghitung rute. Periksa koneksi internet dan coba lagi.");
+    } finally {
+      setRoutingLoading(false);
+    }
+  }, [routingFrom, routingTo]);
+
+  const handleClearRoute = useCallback(() => {
+    routeLayerRef.current?.clearLayers();
+    setRoutingFrom(null);
+    setRoutingTo(null);
+    setRouteInfo(null);
+    setRoutingError(null);
+  }, []);
+
+  const closeRightPanels = () => { setShowSchoolList(false); setShowStats(false); setShowLayerControl(false); setShowRouting(false); };
   const schoolCount = geoData.filter((f) => f.properties.amenity === "school" || f.properties.amenity === "university").length;
 
   if (loading) return <LoadingScreen onDone={handleLoadingDone} />;
@@ -442,11 +536,26 @@ export default function MapPage() {
         />
       )}
 
-      {/* TOP RIGHT: Layer / school / stats panels */}
-      {showLayerControl && !showSchoolList && !showStats && <LayerControlPanel layers={layers} onChange={setLayers} />}
-      {showSchoolList && !showStats && <SchoolListPanel features={geoData} onSelect={handleSchoolSelect} onClose={() => setShowSchoolList(false)} />}
-      {showStats && (
+      {/* TOP RIGHT: Layer / school / stats / routing panels */}
+      {showLayerControl && !showSchoolList && !showStats && !showRouting && <LayerControlPanel layers={layers} onChange={setLayers} />}
+      {showSchoolList && !showStats && !showRouting && <SchoolListPanel features={geoData} onSelect={handleSchoolSelect} onClose={() => setShowSchoolList(false)} />}
+      {showStats && !showRouting && (
         <StatsPanel features={geoData} onSelectSchool={(f) => { const feat = f as GeoFeature; const center = getFeatureCenter(feat.geometry); if (center && mapRef.current) mapRef.current.flyTo(center, 17, { duration: 1.2 }); setSelectedFeature(feat); setSelectedLatlng(center ? { lat: center[0], lng: center[1] } : null); setShowInfo(true); setShowStats(false); }} onClose={() => setShowStats(false)} />
+      )}
+      {showRouting && (
+        <RoutingPanel
+          features={geoData}
+          routeInfo={routeInfo}
+          loading={routingLoading}
+          error={routingError}
+          from={routingFrom}
+          to={routingTo}
+          onFromChange={setRoutingFrom}
+          onToChange={setRoutingTo}
+          onCalculate={handleCalculateRoute}
+          onClear={handleClearRoute}
+          onClose={() => { setShowRouting(false); handleClearRoute(); }}
+        />
       )}
 
       {/* LEFT TOOLBAR */}
@@ -467,6 +576,17 @@ export default function MapPage() {
         </ToolBtn>
 
         <div className="h-px bg-white/40 w-8 mx-auto" />
+
+        {/* Routing */}
+        <ToolBtn
+          active={showRouting}
+          onClick={() => { closeRightPanels(); setShowRouting((v) => !v); }}
+          title="Petunjuk arah (dari → ke)"
+          testId="button-routing"
+          color="blue"
+        >
+          <Navigation className="w-4 h-4" />
+        </ToolBtn>
 
         {/* Measure */}
         <ToolBtn active={measureMode} onClick={toggleMeasure} title={measureMode ? "Berhenti mengukur" : "Alat ukur jarak"} testId="button-measure" color="red">
