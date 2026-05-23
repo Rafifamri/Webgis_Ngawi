@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+cp artifacts/webgis-ngawi/package.standalone.json artifacts/webgis-ngawi/package.json
+cp artifacts/webgis-ngawi/tsconfig.vercel.json artifacts/webgis-ngawi/tsconfig.json
+npm install --prefix artifacts/webgis-ngawi
+npm run build:vercel --prefix artifacts/webgis-ngawi
