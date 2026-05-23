@@ -1,0 +1,14 @@
+node_modules
+.git
+.local
+.agents
+attached_assets
+artifacts/webgis-ngawi/.replit-artifact
+artifacts/api-server
+artifacts/mockup-sandbox
+lib
+scripts
+*.log
+.replit
+.replitignore
+.npmrc
