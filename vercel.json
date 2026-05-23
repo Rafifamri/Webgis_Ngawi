@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "echo 'Built by GitHub Actions'",
+  "buildCommand": "npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm --filter @workspace/webgis-ngawi run build:vercel",
   "outputDirectory": "artifacts/webgis-ngawi/dist",
-  "installCommand": "echo 'skip'",
+  "installCommand": "echo skip",
   "framework": null
 }
