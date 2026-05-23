@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm install && pnpm --filter @workspace/webgis-ngawi build -- --config vite.config.vercel.ts",
+  "outputDirectory": "artifacts/webgis-ngawi/dist",
+  "installCommand": "npm install -g pnpm && pnpm install",
+  "framework": null
+}
